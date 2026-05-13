@@ -11,7 +11,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
+    widgets::{Block, BorderType, Borders, List, ListItem, Paragraph, Wrap},
 };
 use std::{
     env,
@@ -324,6 +324,7 @@ impl App {
             }
 
             ":exit" | ":quit" => {
+                self.logs.push("─── Shutting down server ───".into());
                 self.exit = true;
                 return;
             }
@@ -516,7 +517,8 @@ fn draw_logs(f: &mut Frame, app: &App, area: Rect) {
     let block = Block::default()
         .borders(Borders::ALL)
         .title(title)
-        .border_style(Style::default().fg(Color::DarkGray));
+        .border_style(Style::default().fg(Color::DarkGray))
+        .border_type(BorderType::Rounded);
 
     let list = List::new(items).block(block);
     f.render_widget(list, area);
@@ -575,7 +577,8 @@ fn draw_input(f: &mut Frame, app: &App, area: Rect) {
     let block = Block::default()
         .borders(Borders::ALL)
         .title(title)
-        .border_style(Style::default().fg(Color::Cyan));
+        .border_style(Style::default().fg(Color::Cyan))
+        .border_type(BorderType::Rounded);
 
     let widget = Paragraph::new(full_text)
         .block(block)
@@ -680,17 +683,36 @@ fn main() -> io::Result<()> {
         app.flush_logs();
 
         if app.exit {
-            let _ = app.stdin_tx.try_send("stop".into());
-            thread::sleep(Duration::from_millis(300));
-            app.flush_logs();
+            if *app.server_running.lock().unwrap() {
+                let _ = app.stdin_tx.send("stop".into());
+
+                let start = std::time::Instant::now();
+
+                while *app.server_running.lock().unwrap() {
+                    app.flush_logs();
+
+                    terminal.draw(|f| draw(f, &app))?;
+
+                    if start.elapsed() > Duration::from_secs(30) {
+                        break;
+                    }
+
+                    thread::sleep(Duration::from_millis(50));
+                }
+            }
+
             disable_raw_mode()?;
+
             execute!(
                 terminal.backend_mut(),
                 LeaveAlternateScreen,
                 DisableMouseCapture
             )?;
+
             terminal.show_cursor()?;
+
             println!("Goodbye!");
+
             return Ok(());
         }
 
@@ -702,9 +724,8 @@ fn main() -> io::Result<()> {
             loop {
                 match event::read()? {
                     Event::Key(key) => match key.code {
-                        KeyCode::Char('c')
-                            if key.modifiers.contains(KeyModifiers::CONTROL) || app.exit =>
-                        {
+                        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                            app.logs.push("─── Shutting down server ───".into());
                             app.exit = true;
                         }
                         KeyCode::Enter => app.send_command(),

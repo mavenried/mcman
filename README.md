@@ -1,4 +1,4 @@
-# mc-console
+# mcman
 
 A Ratatui TUI console for Minecraft servers.
 
@@ -34,17 +34,17 @@ Binary will be at `target/release/mc-console`.
 
 ## Keybindings
 
-| Key            | Action                        |
-|----------------|-------------------------------|
-| Enter          | Send command                  |
-| Tab            | Cycle tab completions         |
-| ↑ / ↓          | Command history               |
-| PgUp / PgDn    | Scroll logs (10 lines)        |
-| Mouse wheel    | Scroll logs (3 lines)         |
-| ← / →          | Move cursor in input          |
-| Home / End     | Jump to start/end of input    |
-| Backspace/Del  | Delete character              |
-| Ctrl+C         | Send `stop` then quit         |
+| Key           | Action                     |
+| ------------- | -------------------------- |
+| Enter         | Send command               |
+| Tab           | Cycle tab completions      |
+| ↑ / ↓         | Command history            |
+| PgUp / PgDn   | Scroll logs (10 lines)     |
+| Mouse wheel   | Scroll logs (3 lines)      |
+| ← / →         | Move cursor in input       |
+| Home / End    | Jump to start/end of input |
+| Backspace/Del | Delete character           |
+| Ctrl+C        | Send `stop` then quit      |
 
 ## Notes
 
