@@ -17,19 +17,19 @@ A Ratatui TUI console for Minecraft servers.
 Requires Rust + Cargo (https://rustup.rs) and Java in your PATH.
 
 ```bash
-cargo build --release
+cargo install mcman
+-OR-
+cargo install --path <path-to-project>
 ```
-
-Binary will be at `target/release/mc-console`.
 
 ## Usage
 
 ```bash
 # Uses server.jar in current directory
-./mc-console
+mcman
 
 # Specify a different jar
-./mc-console /path/to/paper-1.21.jar
+mcman /path/to/server.jar
 ```
 
 ## Keybindings
@@ -46,8 +46,17 @@ Binary will be at `target/release/mc-console`.
 | Backspace/Del | Delete character           |
 | Ctrl+C        | Send `stop` then quit      |
 
+## Metacommands
+
+| Command | Action                  |
+| ------- | ----------------------- |
+| :clear  | Clear the log buffer.   |
+| :exit   | Exit after sending stop |
+| :quit   | Aliased to `:exit`      |
+
 ## Notes
 
-- Commands can be typed with or without a leading `/`
-- The status indicator (● RUNNING / ○ STOPPED) reflects the server process state
-- The scroll indicator shows current position when not auto-scrolling
+- Commands can be typed with or without a leading `/`.
+- Autocomplete for most common commands.
+- The status indicator (● RUNNING / ○ STOPPED) reflects the server process state.
+- The scroll indicator shows current position when not auto-scrolling.
