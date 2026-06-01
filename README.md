@@ -48,11 +48,13 @@ mcman /path/to/server.jar
 
 ## Metacommands
 
-| Command | Action                  |
-| ------- | ----------------------- |
-| :clear  | Clear the log buffer.   |
-| :exit   | Exit after sending stop |
-| :quit   | Aliased to `:exit`      |
+| Command | Action                         |
+| ------- | ------------------------------ |
+| :clear  | Clear the log buffer.          |
+| :exit   | Exit after sending stop        |
+| :save   | Save the logs into `mcman.log` |
+| :quit   | Aliased to `:exit`             |
+| :q      | Aliased to `:exit`             |
 
 ## Notes
 
