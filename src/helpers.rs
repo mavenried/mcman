@@ -14,28 +14,34 @@ pub fn classify_line(line: &str) -> Color {
     }
 }
 
-pub fn draw(f: &mut Frame, app: &App) {
+pub fn draw(f: &mut Frame, app: &mut App) {
     let size = f.area();
+
+    let input_height = if app.completions.is_empty() { 3 } else { 4 };
+
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(3), Constraint::Length(3)])
+        .constraints([Constraint::Min(3), Constraint::Length(input_height)])
         .split(size);
 
     draw_logs(f, app, chunks[0]);
     draw_input(f, app, chunks[1]);
 }
 
-pub fn draw_logs(f: &mut Frame, app: &App, area: Rect) {
-    let visible = area.height.saturating_sub(2) as usize;
-    let total = app.logs.len();
-    let start = app.scroll_offset.min(total.saturating_sub(visible));
-    let end = total;
+pub fn draw_logs(f: &mut Frame, app: &mut App, area: Rect) {
+    let content_width = area.width.saturating_sub(4) as usize;
+    let viewport_height = area.height.saturating_sub(2) as usize;
+
+    if content_width != app.wrap_width {
+        app.rebuild_wrapped_logs(content_width);
+    }
+
+    app.max_scroll = app.wrapped_logs.len().saturating_sub(viewport_height);
 
     let scroll_indicator = if app.auto_scroll {
         " [AUTO-SCROLL] ".to_string()
     } else {
-        let max_offset = total.saturating_sub(visible);
-        format!(" [{}/{}] ", app.scroll_offset + 1, max_offset + 1)
+        format!(" [{}/{}] ", app.scroll_offset + 1, app.max_scroll + 1)
     };
 
     let running = *app.server_running.lock().unwrap();
@@ -63,26 +69,42 @@ pub fn draw_logs(f: &mut Frame, app: &App, area: Rect) {
         .border_style(Style::default().fg(Color::DarkGray))
         .border_type(BorderType::Rounded);
 
-    let text = ratatui::text::Text::from(
-        app.logs[start..end]
-            .iter()
-            .map(|line| {
-                let color = classify_line(line);
-                Line::from(vec![Span::styled(line.clone(), Style::default().fg(color))])
-            })
-            .collect::<Vec<_>>(),
-    );
+    let start = app.scroll_offset.min(app.max_scroll);
+    let end = (start + viewport_height).min(app.wrapped_logs.len());
 
-    let widget = Paragraph::new(text).block(block).wrap(Wrap { trim: false });
+    let items: Vec<ListItem> = app.wrapped_logs[start..end]
+        .iter()
+        .map(|line| {
+            let color = classify_line(line);
+            ListItem::new(Line::from(vec![Span::styled(
+                line.clone(),
+                Style::default().fg(color),
+            )]))
+        })
+        .collect();
 
-    f.render_widget(widget, area);
+    let list = List::new(items).block(block);
+
+    f.render_widget(list, area);
 }
 
 pub fn draw_input(f: &mut Frame, app: &App, area: Rect) {
-    let before_cursor = &app.input[..app.cursor_pos];
-    let cursor_char = app.input[app.cursor_pos..].chars().next().unwrap_or(' ');
-    let after_cursor = if app.cursor_pos < app.input.len() {
-        &app.input[app.cursor_pos + cursor_char.len_utf8()..]
+    let cursor_pos = app.cursor_pos.min(app.input.len());
+
+    let cursor_pos = if app.input.is_char_boundary(cursor_pos) {
+        cursor_pos
+    } else {
+        app.input
+            .char_indices()
+            .map(|(i, _)| i)
+            .take_while(|&i| i < cursor_pos)
+            .last()
+            .unwrap_or(0)
+    };
+    let before_cursor = &app.input[..cursor_pos];
+    let cursor_char = app.input[cursor_pos..].chars().next().unwrap_or(' ');
+    let after_cursor = if cursor_pos < app.input.len() {
+        &app.input[cursor_pos + cursor_char.len_utf8()..]
     } else {
         ""
     };
@@ -131,7 +153,7 @@ pub fn draw_input(f: &mut Frame, app: &App, area: Rect) {
     let full_text = if app.completions.is_empty() {
         ratatui::text::Text::from(content)
     } else {
-        ratatui::text::Text::from(vec![content, hint_line])
+        ratatui::text::Text::from(vec![hint_line, content])
     };
 
     let block = Block::default()

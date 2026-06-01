@@ -8,6 +8,9 @@ pub struct App {
     pub input: String,
     pub cursor_pos: usize,
     pub scroll_offset: usize,
+    pub max_scroll: usize,
+    pub wrapped_logs: Vec<String>,
+    pub wrap_width: usize,
     pub auto_scroll: bool,
     pub completions: Vec<String>,
     pub completion_idx: Option<usize>,
@@ -19,6 +22,41 @@ pub struct App {
 }
 
 impl App {
+    pub fn rebuild_wrapped_logs(&mut self, width: usize) {
+        if width == 0 {
+            return;
+        }
+
+        self.wrap_width = width;
+        self.wrapped_logs.clear();
+
+        for line in &self.logs {
+            let mut current = String::new();
+
+            for word in line.split_whitespace() {
+                let extra = if current.is_empty() { 0 } else { 1 };
+
+                if current.len() + word.len() + extra > width {
+                    if !current.is_empty() {
+                        self.wrapped_logs.push(current);
+                    }
+                    current = word.to_string();
+                } else {
+                    if !current.is_empty() {
+                        current.push(' ');
+                    }
+                    current.push_str(word);
+                }
+            }
+
+            if current.is_empty() {
+                self.wrapped_logs.push(String::new());
+            } else {
+                self.wrapped_logs.push(current);
+            }
+        }
+    }
+
     pub fn new(
         stdin_tx: mpsc::SyncSender<String>,
         log_rx: mpsc::Receiver<String>,
@@ -31,6 +69,9 @@ impl App {
             input: String::new(),
             cursor_pos: 0,
             scroll_offset: 0,
+            max_scroll: 0,
+            wrapped_logs: Vec::new(),
+            wrap_width: 0,
             auto_scroll: true,
             completions: Vec::new(),
             completion_idx: None,
@@ -45,6 +86,10 @@ impl App {
         while let Ok(line) = self.log_rx.try_recv() {
             self.logs
                 .push(line.replace('\t', "    ").replace('\r', " "));
+
+            if self.wrap_width > 0 {
+                self.rebuild_wrapped_logs(self.wrap_width);
+            }
         }
     }
 
@@ -61,17 +106,32 @@ impl App {
                     self.cursor_pos = 0;
                 }
 
-                ":exit" | ":quit" => {
-                    self.logs
-                        .push("\x1b[33m─── Shutting down server ───\x1b[0m".into());
+                ":exit" | ":quit" | ":q" => {
+                    self.logs.push("[mcman] Shutting down server.".into());
                     self.exit = true;
+                    self.input.clear();
+                    self.cursor_pos = 0;
                 }
-
+                ":save" => {
+                    if let Err(e) = std::fs::write("mcman.log", self.logs.join("\n")) {
+                        self.logs.push(format!("[error] Save Failed: {e}"));
+                    } else {
+                        self.logs.push("[mcman] Saved to mcman.log".into());
+                    }
+                    self.input.clear();
+                    self.cursor_pos = 0;
+                }
                 _ => {
-                    self.logs
-                        .push("[\x1b[31mERROR\x1b[0m] Command::Invalid\x1b[0m".into());
+                    self.logs.push("[error] Command::Invalid.".into());
+                    self.input.clear();
+                    self.cursor_pos = 0;
                 }
             }
+
+            if self.wrap_width > 0 {
+                self.rebuild_wrapped_logs(self.wrap_width);
+            }
+
             return;
         }
 
@@ -79,13 +139,19 @@ impl App {
             self.history.push(cmd.clone());
         }
         self.history_idx = None;
-        self.logs.push(format!("> {}", cmd));
+        self.logs.push(format!("[mcman] > {}", cmd));
+
+        if self.wrap_width > 0 {
+            self.rebuild_wrapped_logs(self.wrap_width);
+        }
+
         let _ = self.stdin_tx.try_send(cmd);
         self.input.clear();
         self.cursor_pos = 0;
         self.completions.clear();
         self.completion_idx = None;
         self.auto_scroll = true;
+        self.scroll_offset = self.max_scroll;
     }
 
     pub fn update_completions(&mut self) {
@@ -175,29 +241,23 @@ impl App {
         self.completion_idx = None;
     }
 
-    fn visible_lines(height: u16) -> usize {
-        height.saturating_sub(5) as usize
-    }
-
     pub fn scroll_up(&mut self, amount: usize) {
         if self.scroll_offset > 0 {
             self.scroll_offset = self.scroll_offset.saturating_sub(amount);
             self.auto_scroll = false;
         }
     }
-    pub fn scroll_down(&mut self, amount: usize, height: u16) {
-        let visible = Self::visible_lines(height);
-        let max_offset = self.logs.len().saturating_sub(visible);
-        self.scroll_offset = (self.scroll_offset + amount).min(max_offset);
-        if self.scroll_offset >= max_offset {
+    pub fn scroll_down(&mut self, amount: usize, _height: u16) {
+        self.scroll_offset = (self.scroll_offset + amount).min(self.max_scroll);
+
+        if self.scroll_offset >= self.max_scroll {
             self.auto_scroll = true;
         }
     }
 
-    pub fn sync_auto_scroll(&mut self, height: u16) {
+    pub fn sync_auto_scroll(&mut self, _height: u16) {
         if self.auto_scroll {
-            let visible = Self::visible_lines(height);
-            self.scroll_offset = self.logs.len().saturating_sub(visible);
+            self.scroll_offset = self.max_scroll;
         }
     }
 }

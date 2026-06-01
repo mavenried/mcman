@@ -47,7 +47,7 @@ fn spawn_server(
     let tx_out = log_tx.clone();
     thread::spawn(move || {
         let reader = BufReader::new(child_stdout);
-        for line in reader.lines().flatten() {
+        for line in reader.lines().map_while(Result::ok) {
             if tx_out.send(line).is_err() {
                 break;
             }
@@ -57,7 +57,7 @@ fn spawn_server(
     let tx_err = log_tx.clone();
     thread::spawn(move || {
         let reader = BufReader::new(child_stderr);
-        for line in reader.lines().flatten() {
+        for line in reader.lines().map_while(Result::ok) {
             if tx_err.send(line).is_err() {
                 break;
             }
@@ -67,7 +67,7 @@ fn spawn_server(
     thread::spawn(move || {
         let _ = child.wait();
         *server_running.lock().unwrap() = false;
-        let _ = log_tx.send("\x1b[33m─── Server process exited ───\x1b[0m".into());
+        let _ = log_tx.send("[mcman] Server process exited.".into());
     });
 
     Ok(())
@@ -106,6 +106,22 @@ pub fn input_poll(
                         if app.cursor_pos < app.input.len() {
                             let c = app.input[app.cursor_pos..].chars().next().unwrap();
                             app.cursor_pos += c.len_utf8();
+
+                            assert!(
+                                app.cursor_pos <= app.input.len(),
+                                "cursor={} len={} input={:?}",
+                                app.cursor_pos,
+                                app.input.len(),
+                                app.input
+                            );
+
+                            assert!(
+                                app.input.is_char_boundary(app.cursor_pos),
+                                "cursor={} len={} input={:?}",
+                                app.cursor_pos,
+                                app.input.len(),
+                                app.input
+                            );
                         }
                     }
                     KeyCode::Home => app.cursor_pos = 0,
@@ -132,6 +148,22 @@ pub fn input_poll(
                     KeyCode::Char(c) => {
                         app.input.insert(app.cursor_pos, c);
                         app.cursor_pos += c.len_utf8();
+
+                        assert!(
+                            app.cursor_pos <= app.input.len(),
+                            "cursor={} len={} input={:?}",
+                            app.cursor_pos,
+                            app.input.len(),
+                            app.input
+                        );
+
+                        assert!(
+                            app.input.is_char_boundary(app.cursor_pos),
+                            "cursor={} len={} input={:?}",
+                            app.cursor_pos,
+                            app.input.len(),
+                            app.input
+                        );
                         app.completion_idx = None;
                         app.update_completions();
                     }
@@ -157,7 +189,7 @@ pub fn input_poll(
 fn main() -> io::Result<()> {
     let jar_path = env::args()
         .nth(1)
-        .unwrap_or_else(|| "server.jar".to_string());
+        .unwrap_or_else(|| "./server.jar".to_string());
     let jar_path = Path::new(&jar_path);
 
     let server_running: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
@@ -166,7 +198,7 @@ fn main() -> io::Result<()> {
     let (stdin_tx, stdin_rx) = mpsc::sync_channel::<String>(64);
 
     match spawn_server(
-        &jar_path,
+        jar_path,
         log_tx.clone(),
         stdin_rx,
         Arc::clone(&server_running),
@@ -203,7 +235,7 @@ fn main() -> io::Result<()> {
                 while *app.server_running.lock().unwrap() {
                     app.flush_logs();
 
-                    terminal.draw(|f| draw(f, &app))?;
+                    terminal.draw(|f| draw(f, &mut app))?;
 
                     if start.elapsed() > Duration::from_secs(30) {
                         break;
@@ -228,7 +260,7 @@ fn main() -> io::Result<()> {
             return Ok(());
         }
 
-        terminal.draw(|f| draw(f, &app))?;
+        terminal.draw(|f| draw(f, &mut app))?;
         match input_poll(&mut app, &terminal) {
             Ok(_) => {}
             Err(e) => {
