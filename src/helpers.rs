@@ -54,7 +54,7 @@ pub fn draw_logs(f: &mut Frame, app: &mut App, area: Rect) {
 
     let title = Line::from(vec![
         Span::styled(
-            " Minecraft Console ",
+            " McMan Console ",
             Style::default()
                 .fg(Color::White)
                 .add_modifier(Modifier::BOLD),
@@ -67,7 +67,7 @@ pub fn draw_logs(f: &mut Frame, app: &mut App, area: Rect) {
         .borders(Borders::ALL)
         .title(title)
         .border_style(Style::default().fg(Color::DarkGray))
-        .border_type(BorderType::Rounded);
+        .border_type(BorderType::Thick);
 
     let start = app.scroll_offset.min(app.max_scroll);
     let end = (start + viewport_height).min(app.wrapped_logs.len());
@@ -137,7 +137,7 @@ pub fn draw_input(f: &mut Frame, app: &App, area: Rect) {
     };
 
     let title = Line::from(vec![
-        Span::styled(" Command", Style::default().fg(Color::Cyan)),
+        Span::styled(" Command", Style::default().fg(Color::Magenta)),
         Span::styled(
             "  Tab=complete  ↑↓=history  PgUp/PgDn=scroll  Ctrl+C=quit",
             Style::default().fg(Color::DarkGray),
@@ -159,8 +159,8 @@ pub fn draw_input(f: &mut Frame, app: &App, area: Rect) {
     let block = Block::default()
         .borders(Borders::ALL)
         .title(title)
-        .border_style(Style::default().fg(Color::Cyan))
-        .border_type(BorderType::Rounded);
+        .border_style(Style::default().fg(Color::Magenta))
+        .border_type(BorderType::Thick);
 
     let widget = Paragraph::new(full_text)
         .block(block)
