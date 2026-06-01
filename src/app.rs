@@ -43,7 +43,8 @@ impl App {
 
     pub fn flush_logs(&mut self) {
         while let Ok(line) = self.log_rx.try_recv() {
-            self.logs.push(line);
+            self.logs
+                .push(line.replace('\t', "    ").replace('\r', " "));
         }
     }
 

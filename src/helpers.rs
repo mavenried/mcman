@@ -5,7 +5,7 @@ pub fn classify_line(line: &str) -> Color {
     let l = line.to_lowercase();
     if l.contains("[error]") || l.contains("exception") || l.contains("stacktrace") {
         Color::Red
-    } else if l.contains("[warn]") {
+    } else if l.contains("[warn]") || l.contains("[mcman]") {
         Color::Yellow
     } else if l.contains("joined the game") || l.contains("left the game") {
         Color::Green
@@ -29,18 +29,7 @@ pub fn draw_logs(f: &mut Frame, app: &App, area: Rect) {
     let visible = area.height.saturating_sub(2) as usize;
     let total = app.logs.len();
     let start = app.scroll_offset.min(total.saturating_sub(visible));
-    let end = (start + visible).min(total);
-
-    let items: Vec<ListItem> = app.logs[start..end]
-        .iter()
-        .map(|line| {
-            let color = classify_line(line);
-            ListItem::new(Line::from(Span::styled(
-                line.clone(),
-                Style::default().fg(color),
-            )))
-        })
-        .collect();
+    let end = total;
 
     let scroll_indicator = if app.auto_scroll {
         " [AUTO-SCROLL] ".to_string()
@@ -74,8 +63,19 @@ pub fn draw_logs(f: &mut Frame, app: &App, area: Rect) {
         .border_style(Style::default().fg(Color::DarkGray))
         .border_type(BorderType::Rounded);
 
-    let list = List::new(items).block(block);
-    f.render_widget(list, area);
+    let text = ratatui::text::Text::from(
+        app.logs[start..end]
+            .iter()
+            .map(|line| {
+                let color = classify_line(line);
+                Line::from(vec![Span::styled(line.clone(), Style::default().fg(color))])
+            })
+            .collect::<Vec<_>>(),
+    );
+
+    let widget = Paragraph::new(text).block(block).wrap(Wrap { trim: false });
+
+    f.render_widget(widget, area);
 }
 
 pub fn draw_input(f: &mut Frame, app: &App, area: Rect) {

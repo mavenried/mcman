@@ -1,5 +1,5 @@
 mod prelude;
-use std::io::Stdout;
+use std::{io::Stdout, path::Path};
 
 use prelude::*;
 mod commands;
@@ -10,13 +10,18 @@ mod helpers;
 use helpers::*;
 
 fn spawn_server(
-    jar_path: &str,
+    jar_path: &Path,
     log_tx: mpsc::SyncSender<String>,
     stdin_rx: mpsc::Receiver<String>,
     server_running: Arc<Mutex<bool>>,
 ) -> io::Result<()> {
     let mut child: Child = Command::new("java")
-        .args(["-jar", jar_path, "--nogui"])
+        .args([
+            "-jar",
+            jar_path.to_str().expect("Path to str failed."),
+            "--nogui",
+        ])
+        .current_dir(jar_path.parent().unwrap())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -153,6 +158,7 @@ fn main() -> io::Result<()> {
     let jar_path = env::args()
         .nth(1)
         .unwrap_or_else(|| "server.jar".to_string());
+    let jar_path = Path::new(&jar_path);
 
     let server_running: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
 
@@ -167,17 +173,13 @@ fn main() -> io::Result<()> {
     ) {
         Ok(_) => {
             let _ = log_tx.send(format!(
-                "\x1b[33m─── Launched: java -jar {} --nogui ───\x1b[0m",
+                "[mcman] Launched: java -jar {:#?} --nogui",
                 jar_path
             ));
         }
         Err(e) => {
-            let _ = log_tx.send(format!(
-                "[\x1b[31mERROR\x1b[0m] Core::FailedToStartServer: {}",
-                e
-            ));
-            let _ =
-                log_tx.send("\x1b[33mIs Java installed and is the jar path correct?\x1b[0m".into());
+            let _ = log_tx.send(format!("[error] Core::FailedToStartServer: {}", e));
+            let _ = log_tx.send("[error] Is Java installed and is the jar path correct?".into());
         }
     }
 
@@ -221,7 +223,7 @@ fn main() -> io::Result<()> {
 
             terminal.show_cursor()?;
 
-            println!("Goodbye!");
+            println!("\x1b[33mmcman exited.\x1b[0m");
 
             return Ok(());
         }
@@ -230,7 +232,7 @@ fn main() -> io::Result<()> {
         match input_poll(&mut app, &terminal) {
             Ok(_) => {}
             Err(e) => {
-                app.logs.push(format!("[\x1b[31mERROR\x1b[0m] Input: {e}"));
+                app.logs.push(format!("[error] Input: {e}"));
             }
         }
     }
