@@ -14,6 +14,7 @@ fn spawn_server(
     log_tx: mpsc::SyncSender<String>,
     stdin_rx: mpsc::Receiver<String>,
     server_running: Arc<Mutex<bool>>,
+    server_process: Arc<Mutex<Option<Child>>>,
 ) -> io::Result<()> {
     let mut child: Child = Command::new("java")
         .args([
@@ -32,6 +33,7 @@ fn spawn_server(
     let child_stdin: ChildStdin = child.stdin.take().unwrap();
     let child_stdout = child.stdout.take().unwrap();
     let child_stderr = child.stderr.take().unwrap();
+    *server_process.lock().unwrap() = Some(child);
 
     thread::spawn(move || {
         let mut stdin = child_stdin;
@@ -65,9 +67,30 @@ fn spawn_server(
     });
 
     thread::spawn(move || {
-        let _ = child.wait();
-        *server_running.lock().unwrap() = false;
-        let _ = log_tx.send("[mcman] Server process exited.".into());
+        loop {
+            let exited = {
+                let mut process = server_process.lock().unwrap();
+                match process.as_mut() {
+                    Some(child) => match child.try_wait() {
+                        Ok(Some(_)) => {
+                            process.take();
+                            true
+                        }
+                        Ok(None) => false,
+                        Err(_) => true,
+                    },
+                    None => true,
+                }
+            };
+
+            if exited {
+                *server_running.lock().unwrap() = false;
+                let _ = log_tx.send("[mcman] Server process exited.".into());
+                break;
+            }
+
+            thread::sleep(Duration::from_millis(50));
+        }
     });
 
     Ok(())
@@ -193,6 +216,7 @@ fn main() -> io::Result<()> {
     let jar_path = Path::new(&jar_path);
 
     let server_running: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
+    let server_process: Arc<Mutex<Option<Child>>> = Arc::new(Mutex::new(None));
 
     let (log_tx, log_rx) = mpsc::sync_channel::<String>(4096);
     let (stdin_tx, stdin_rx) = mpsc::sync_channel::<String>(64);
@@ -202,6 +226,7 @@ fn main() -> io::Result<()> {
         log_tx.clone(),
         stdin_rx,
         Arc::clone(&server_running),
+        Arc::clone(&server_process),
     ) {
         Ok(_) => {
             let _ = log_tx.send(format!(
@@ -258,6 +283,48 @@ fn main() -> io::Result<()> {
             println!("\x1b[33mmcman exited.\x1b[0m");
 
             return Ok(());
+        }
+
+        if app.restart {
+            app.restart = false;
+
+            if let Some(mut child) = server_process.lock().unwrap().take() {
+                let _ = child.kill();
+            }
+
+            let start = std::time::Instant::now();
+            while *app.server_running.lock().unwrap() {
+                app.flush_logs();
+                if start.elapsed() > Duration::from_secs(30) {
+                    app.logs
+                        .push("[error] Timed out stopping server for restart.".into());
+                    break;
+                }
+                thread::sleep(Duration::from_millis(50));
+            }
+
+            let (stdin_tx, stdin_rx) = mpsc::sync_channel::<String>(64);
+            app.stdin_tx = stdin_tx;
+
+            match spawn_server(
+                jar_path,
+                log_tx.clone(),
+                stdin_rx,
+                Arc::clone(&server_running),
+                Arc::clone(&server_process),
+            ) {
+                Ok(_) => {
+                    let _ = log_tx.send(format!(
+                        "[mcman] Restarted: java -jar {:#?} --nogui",
+                        jar_path
+                    ));
+                }
+                Err(e) => {
+                    let _ = log_tx.send(format!("[error] Core::FailedToRestartServer: {}", e));
+                    let _ = log_tx
+                        .send("[error] Is Java installed and is the jar path correct?".into());
+                }
+            }
         }
 
         terminal.draw(|f| draw(f, &mut app))?;

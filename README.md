@@ -52,6 +52,7 @@ mcman /path/to/server.jar
 | ------- | ------------------------------ |
 | :clear  | Clear the log buffer.          |
 | :exit   | Exit after sending stop        |
+| :restart | Kill and restart the server.  |
 | :save   | Save the logs into `mcman.log` |
 | :quit   | Aliased to `:exit`             |
 | :q      | Aliased to `:exit`             |

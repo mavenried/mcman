@@ -18,6 +18,7 @@ pub struct App {
     pub history_idx: Option<usize>,
 
     pub stdin_tx: mpsc::SyncSender<String>,
+    pub restart: bool,
     pub exit: bool,
 }
 
@@ -78,6 +79,7 @@ impl App {
             history: Vec::new(),
             history_idx: None,
             stdin_tx,
+            restart: false,
             exit: false,
         }
     }
@@ -109,6 +111,12 @@ impl App {
                 ":exit" | ":quit" | ":q" => {
                     self.logs.push("[mcman] Shutting down server.".into());
                     self.exit = true;
+                    self.input.clear();
+                    self.cursor_pos = 0;
+                }
+                ":restart" => {
+                    self.logs.push("[mcman] Restarting server.".into());
+                    self.restart = true;
                     self.input.clear();
                     self.cursor_pos = 0;
                 }
@@ -259,5 +267,25 @@ impl App {
         if self.auto_scroll {
             self.scroll_offset = self.max_scroll;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn restart_command_requests_server_restart() {
+        let (stdin_tx, _stdin_rx) = mpsc::sync_channel(1);
+        let (_log_tx, log_rx) = mpsc::sync_channel(1);
+        let server_running = Arc::new(Mutex::new(false));
+        let mut app = App::new(stdin_tx, log_rx, server_running);
+
+        app.input = ":restart".into();
+        app.send_command();
+
+        assert!(app.restart);
+        assert_eq!(app.input, "");
+        assert!(app.logs.iter().any(|log| log.contains("Restarting server")));
     }
 }
